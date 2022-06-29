@@ -174,27 +174,32 @@ $$
 LANGUAGE PLPGSQL;
 
 
-CREATE OR REPLACE FUNCTION find_eulerian_path()
+CREATE OR REPLACE FUNCTION find_eulerian_path(v_ TEXT DEFAULT NULL)
 RETURNS SETOF TEXT
 AS $$
 DECLARE
-    v_ TEXT;
     path_ TEXT[] = ARRAY[]::TEXT[];
 BEGIN
-    SELECT src,
-           array_length(array_agg(dst), 1) AS degree
-        FROM store.graph
-        WHERE NOT is_removed
-        GROUP BY src HAVING array_length(array_agg(dst), 1) % 2 != 0
-        ORDER BY degree DESC
-        LIMIT 1
-        INTO v_;
+    IF v_ IS NULL THEN
+        SELECT src,
+               array_length(array_agg(dst), 1) AS degree
+             FROM store.graph
+             WHERE NOT is_removed
+             GROUP BY src HAVING array_length(array_agg(dst), 1) % 2 != 0
+             ORDER BY degree DESC
+             LIMIT 1
+             INTO v_;
 
-    IF FOUND THEN
-        RAISE NOTICE 'Start vertex: %', v_;
-        SELECT * FROM graph.traverse(v_, path_) INTO path_;
+        IF NOT FOUND THEN
+             SELECT src FROM store.graph ORDER BY RANDOM() LIMIT 1 INTO v_;
+        END IF;
     END IF;
 
+    RAISE NOTICE 'Start vertex: %', v_;
+    SELECT * FROM graph.traverse(v_, path_) INTO path_;
+
+    -- reset is_removed flag in the graph
+    UPDATE store.graph SET is_removed = FALSE;
     RETURN QUERY SELECT UNNEST(path_);
 END
 $$
